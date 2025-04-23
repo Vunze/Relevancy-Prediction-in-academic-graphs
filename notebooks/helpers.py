@@ -1,7 +1,21 @@
 import requests
 import pandas as pd
 from fake_useragent import UserAgent
+from dotenv import load_dotenv
+import os
+from os.path import join, dirname
+from habanero.crossref import Crossref
+from scholarly import scholarly
 
+dotenv_path = join(dirname(__file__), ".env")
+load_dotenv(dotenv_path)
+
+SCOPUS_KEY = os.environ.get("SCOPUS_API")
+
+cr = Crossref()
+
+def handle_empty(field, placeholder="unknown"):
+    return field if field else placeholder
 
 def get_refs_and_cites(doi, cr):
     cites = opencitations(doi)
@@ -53,7 +67,7 @@ def opencitations(doi):
     ua = UserAgent()
     open_citations_token = "a3409f07-fd49-4230-b1fb-5114ff0a5c52"
 
-    base_url = "https://opencitations.net/index/coci/api/v1/citations/"
+    base_url = "https://opencitations.net/index/meta/api/v1/citations/"
 
     headers = {"Accept": "application/json",
                "Authorization": f"{open_citations_token}",
@@ -70,6 +84,49 @@ def opencitations(doi):
     except Exception as e:
         print(e)
     return []
+
+
+def keywords(doi):
+    url = f"https://api.elsevier.com/content/search/scopus?query=DOI({doi})"
+    headers = {"X-ELS-APIKey": SCOPUS_KEY, "Accept": "application/json"}
+    response = requests.get(url, headers=headers)
+
+    metadata = response.json()
+    keywords = metadata["search-results"]["entry"][0].get("authkeywords", [])
+    return keywords if keywords else None
+
+def keywords_scholar(doi):
+
+    search_query = scholarly.search_pubs(doi)
+    paper = next(search_query)
+
+    keywords = paper.get("bib", {}).get("keywords", None)
+    return keywords
+
+
+def metadata(doi):
+    url = f"https://api.crossref.org/works/{doi}"
+    response = requests.get(url)
+    metadata = response.json()["message"]
+
+    # Extracting details
+    title = metadata.get("title", [""])[0]
+    authors = [f"{author['given']} {author['family']}" for author in metadata.get("author", [])]
+    journal = metadata.get("container-title", [""])[0]
+    published_date = metadata.get("published-print", {}).get("date-parts", [[""]])[0]
+    abstract = metadata.get("abstract", "")
+    return title, authors, journal, published_date, abstract
+
+def metadata_scholar(doi):
+    search_query = scholarly.search_pubs(doi)
+    paper = next(search_query)  # Get the first result
+    title = paper.get('bib', {}).get("title", None)
+    authors = paper.get('bib', {}).get("author", None)
+    journal = paper.get('bib', {}).get('journal', None)
+    year = paper.get('bib', {}).get("pub_year", None)
+    abstract = paper.get('bib', {}).get("abstract", None)
+    return title, authors, journal, year, abstract
+
 
 # def get_article_info(doi):
 #     url = f"https://api.crossref.org/works/{doi}.xml"
@@ -90,9 +147,31 @@ def opencitations(doi):
 #     else:
 #         return "Failed to retrieve abstract."
 
+def get_all_metadata(doi):
+    meta = None
+    keys = None
+    try:
+        meta = metadata(doi)
+    except Exception as _:
+        pass
+    # if meta is None:
+    #     try:
+    #         meta = metadata_scholar(doi)
+    #     except Exception as _:
+    #         pass
+    try:
+        keys = keywords(doi)
+    except Exception as _:
+        pass
+    # if keys is None:
+    #     try:
+    #         keys = keywords_scholar(doi)
+    #     except Exception as _:
+    #         pass
+    return {'title': meta[0] if meta else None, "authors": meta[1] if meta else None,
+             "venue": meta[2] if meta else None, "year": meta[3] if meta else None, "abstract": meta[4] if meta else None, "keywords": keys}
 
 
-# if __name__ == "__main__":
-#     doi = "10.1007/JHEP07(2017)107"
-#     res = get_article_info(doi)
-#     print(res)
+if __name__ == "__main__":
+    doi = "10.1143/JJAP.27.L209"
+    print(get_all_metadata(doi))

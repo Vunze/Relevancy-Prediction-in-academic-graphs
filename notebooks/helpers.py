@@ -11,6 +11,7 @@ dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
 
 SCOPUS_KEY = os.environ.get("SCOPUS_API")
+OPENCITES = os.environ.get("OPENCITES")
 
 cr = Crossref()
 
@@ -65,12 +66,11 @@ def crossref_references(doi, cr):
 
 def opencitations(doi):
     ua = UserAgent()
-    open_citations_token = "a3409f07-fd49-4230-b1fb-5114ff0a5c52"
 
     base_url = "https://opencitations.net/index/meta/api/v1/citations/"
 
     headers = {"Accept": "application/json",
-               "Authorization": f"{open_citations_token}",
+               "Authorization": f"{OPENCITES}",
                "User-Agent": str(ua.random)}
     try:
         response = requests.get(f"{base_url}{doi}", headers=headers, timeout=4)
